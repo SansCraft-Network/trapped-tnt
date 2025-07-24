@@ -1,0 +1,32 @@
+name: TrappedTnt
+version: ${project.version}
+main: top.sanscraft.trappedtnt.TrappedTnt
+api-version: 1.20
+author: SansNom
+description: A Spigot plugin for trapped TNT functionality
+
+softdepend: [WorldGuard]
+
+commands:
+  trappedtnt:
+    description: Main command for TrappedTnt plugin
+    usage: /<command> [help|reload|give]
+    permission: trappedtnt.use
+    permission-message: You don't have permission to use this command!
+
+permissions:
+  trappedtnt.*:
+    description: Gives access to all TrappedTnt commands
+    children:
+      trappedtnt.use: true
+      trappedtnt.admin: true
+      trappedtnt.give: true
+  trappedtnt.use:
+    description: Allows basic usage of TrappedTnt
+    default: true
+  trappedtnt.admin:
+    description: Allows administrative commands
+    default: op
+  trappedtnt.give:
+    description: Allows giving trapped TNT to players
+    default: op

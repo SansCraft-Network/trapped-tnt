@@ -1,0 +1,61 @@
+# TrappedTnt Configuration File
+# Plugin version: 1.0.0
+
+# General Settings
+general:
+  # Enable debug messages
+  debug: false
+  
+  # Plugin prefix for messages
+  prefix: "&6[TrappedTnt]&r"
+
+# Trapped TNT Settings
+trapped-tnt:
+  # Enable trapped TNT functionality
+  enabled: true
+  
+  # Explosion power (default TNT is 4.0)
+  explosion-power: 4.0
+  
+  # Whether to break blocks
+  break-blocks: true
+  
+  # Whether to cause fire
+  set-fire: false
+  
+  # Fuse timer in ticks (20 ticks = 1 second, default TNT is 80 ticks)
+  fuse-time: 80
+  
+  # Whether instant explosion on player contact is enabled
+  instant-explosion-on-contact: true
+  
+  # Enable proximity explosion (triggers explosion when players are near)
+  enable-proximity-explosion: true
+  
+  # Whether trapped TNT should ignore shield protection
+  bypass-shields: true
+
+# WorldGuard Integration (soft dependency)
+worldguard:
+  # Enable WorldGuard region restrictions
+  enabled: true
+  
+  # List of regions where trapped TNT can be placed
+  # Leave empty to allow globally (if WorldGuard is installed)
+  allowed-regions: []
+  # Example: 
+  # allowed-regions:
+  #   - "spawn"
+  #   - "pvp-arena"
+  #   - "minefield"
+
+# Messages
+messages:
+  no-permission: "&cYou don't have permission to use this command!"
+  plugin-reloaded: "&aTrappedTnt configuration reloaded successfully!"
+  invalid-command: "&cInvalid command. Use /trappedtnt help for available commands."
+  trapped-tnt-given: "&aYou have been given &6{amount} &atrapped TNT!"
+  trapped-tnt-placed: "&eTrapped TNT placed! Be careful..."
+  region-not-allowed: "&cYou cannot place trapped TNT in this area!"
+  worldguard-not-found: "&eWorldGuard not detected. Trapped TNT works globally."
+  explosion-damage: "&cYou took explosion damage that bypassed your shield!"
