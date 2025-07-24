@@ -11,6 +11,11 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
 public class TrappedTnt extends JavaPlugin {
     
     private TrappedTntUtils tntUtils;
@@ -31,6 +36,9 @@ public class TrappedTnt extends JavaPlugin {
         
         // Register events
         registerEvents();
+        
+        // Register tab completer for the main command
+        this.getCommand("trappedtnt").setTabCompleter(this);
         
         // Check WorldGuard integration
         if (worldGuardIntegration.isWorldGuardEnabled()) {
@@ -158,5 +166,52 @@ public class TrappedTnt extends JavaPlugin {
         }
         
         return true;
+    }
+    
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        List<String> completions = new ArrayList<>();
+        
+        if (!command.getName().equalsIgnoreCase("trappedtnt")) {
+            return completions;
+        }
+        
+        if (args.length == 1) {
+            // First argument - main subcommands
+            List<String> subcommands = new ArrayList<>();
+            subcommands.add("help");
+            
+            if (sender.hasPermission("trappedtnt.admin")) {
+                subcommands.add("reload");
+            }
+            
+            if (sender.hasPermission("trappedtnt.give")) {
+                subcommands.add("give");
+            }
+            
+            // Filter subcommands based on what the user has typed
+            String partial = args[0].toLowerCase();
+            return subcommands.stream()
+                    .filter(s -> s.toLowerCase().startsWith(partial))
+                    .collect(Collectors.toList());
+                    
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("give")) {
+            // Second argument for "give" command - player names
+            if (sender.hasPermission("trappedtnt.give")) {
+                String partial = args[1].toLowerCase();
+                return Bukkit.getOnlinePlayers().stream()
+                        .map(Player::getName)
+                        .filter(name -> name.toLowerCase().startsWith(partial))
+                        .collect(Collectors.toList());
+            }
+            
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("give")) {
+            // Third argument for "give" command - amount suggestions
+            if (sender.hasPermission("trappedtnt.give")) {
+                return Arrays.asList("1", "2", "4", "8", "16", "32", "64");
+            }
+        }
+        
+        return completions;
     }
 }
