@@ -36,8 +36,14 @@ trapped-tnt:
   bypass-shields: true
   
   # Damage multiplier when player is actively blocking with a shield 
+  # Always calculates unshielded damage and applies this multiplier
   # (3.0 = 300% damage, 2.0 = 200% damage, etc.)
   shield-blocking-damage-multiplier: 3.0
+  
+  # Minimum damage threshold (in half-hearts) to apply shield blocking penalty
+  # Based on calculated unshielded damage (what they would take without shield)
+  # (1.0 = 0.5 hearts, 2.0 = 1 heart, 4.0 = 2 hearts, etc.)
+  shield-blocking-damage-threshold: 1.0
 
 # WorldGuard Integration (soft dependency)
 worldguard:

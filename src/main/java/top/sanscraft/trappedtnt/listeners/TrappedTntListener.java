@@ -7,13 +7,13 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TNTPrimed;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.inventory.ItemStack;
@@ -157,7 +157,7 @@ public class TrappedTntListener implements Listener {
     }
     
     /**
-     * Handle explosion events to apply custom damage through shields
+     * Handle explosion events to track trapped TNT explosions
      */
     @EventHandler(priority = EventPriority.HIGH)
     public void onEntityExplode(EntityExplodeEvent event) {
@@ -177,124 +177,127 @@ public class TrappedTntListener implements Listener {
         
         plugin.getLogger().info("Trapped TNT exploded at " + tnt.getLocation());
         
-        // Apply custom damage that ignores shields if enabled
-        if (plugin.getConfig().getBoolean("trapped-tnt.bypass-shields", true)) {
-            applyCustomExplosionDamage(tnt, event.getYield());
+        // Note: We now handle damage modification in onEntityDamageByEntity
+        // instead of applying custom damage here
+    }
+    
+    /**
+     * Handle damage events from trapped TNT to apply shield penalties
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
+        // Only handle damage from TNT explosions
+        if (!(event.getDamager() instanceof TNTPrimed)) {
+            return;
         }
-    }
-    
-    /**
-     * Apply custom explosion damage that ignores shields
-     */
-    private void applyCustomExplosionDamage(TNTPrimed tnt, float explosionPower) {
-        Location explosionLocation = tnt.getLocation();
-        double maxDistance = explosionPower * 3.5; // Similar to vanilla TNT damage calculation
         
-        // Get all nearby players
-        for (Entity entity : explosionLocation.getWorld().getNearbyEntities(explosionLocation, maxDistance, maxDistance, maxDistance)) {
-            if (!(entity instanceof Player)) {
-                continue;
-            }
-            
-            Player player = (Player) entity;
-            double distance = player.getLocation().distance(explosionLocation);
-            
-            // Calculate damage based on distance
-            if (distance <= maxDistance) {
-                double damage = calculateExplosionDamage(distance, explosionPower);
-                
-                if (damage > 0) {
-                    // Apply damage that ignores shields
-                    applyShieldIgnoringDamage(player, damage, tnt);
-                }
-            }
+        TNTPrimed tnt = (TNTPrimed) event.getDamager();
+        
+        // Check if this is a trapped TNT using metadata
+        if (!tnt.hasMetadata("trapped_tnt")) {
+            return;
         }
-    }
-    
-    /**
-     * Calculate explosion damage based on distance and power
-     */
-    private double calculateExplosionDamage(double distance, float explosionPower) {
-        // Base damage calculation similar to vanilla Minecraft
-        double baseDamage = explosionPower * 7.0; // TNT typically does up to 65 damage at point blank
-        double damageReduction = distance / (explosionPower * 2.0);
         
-        // Apply damage falloff
-        double finalDamage = baseDamage * (1.0 - damageReduction);
+        // Only handle damage to players
+        if (!(event.getEntity() instanceof Player)) {
+            return;
+        }
         
-        // Ensure minimum damage and cap maximum
-        return Math.max(0, Math.min(finalDamage, baseDamage));
-    }
-    
-    /**
-     * Apply damage to a player that ignores shield protection and deals extra damage to blocking players
-     */
-    private void applyShieldIgnoringDamage(Player player, double damage, TNTPrimed tnt) {
-        // Store original shield state
-        ItemStack mainHand = player.getInventory().getItemInMainHand();
-        ItemStack offHand = player.getInventory().getItemInOffHand();
-        boolean hadShieldInMainHand = mainHand.getType() == Material.SHIELD;
-        boolean hadShieldInOffHand = offHand.getType() == Material.SHIELD;
+        Player player = (Player) event.getEntity();
+        double originalDamage = event.getFinalDamage();
         
         // Check if player is actively blocking with a shield
         boolean isBlocking = player.isBlocking();
-        boolean hasShield = hadShieldInMainHand || hadShieldInOffHand;
-        
-        // Calculate final damage based on shield blocking status
-        double finalDamage = damage;
-        String damageMessage = plugin.getConfig().getString("messages.explosion-damage", 
-            "&cYou took explosion damage that bypassed your shield!");
+        ItemStack mainHand = player.getInventory().getItemInMainHand();
+        ItemStack offHand = player.getInventory().getItemInOffHand();
+        boolean hasShield = (mainHand.getType() == Material.SHIELD) || (offHand.getType() == Material.SHIELD);
         
         if (isBlocking && hasShield) {
-            // Apply configurable damage multiplier if player is actively blocking
+            // Always calculate what the damage would be without shield blocking
+            // This ensures consistent 300% penalty regardless of partial vs perfect blocks
+            double unshieldedDamage = calculateUnshieldedExplosionDamage(player, tnt);
+            
+            // Check if the calculated unshielded damage is above threshold
+            double damageThreshold = plugin.getConfig().getDouble("trapped-tnt.shield-blocking-damage-threshold", 1.0);
+            if (unshieldedDamage < damageThreshold) {
+                return;
+            }
+            
+            // Apply configurable damage multiplier for blocking players
             double damageMultiplier = plugin.getConfig().getDouble("trapped-tnt.shield-blocking-damage-multiplier", 3.0);
-            finalDamage = damage * damageMultiplier;
-            damageMessage = plugin.getConfig().getString("messages.shield-blocking-damage", 
+            double newDamage = unshieldedDamage * damageMultiplier;
+            
+            // Set the new damage amount (overriding the 0 damage from perfect shield block)
+            event.setDamage(newDamage);
+            
+            // Add enhanced knockback for blocking players
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                Vector knockback = player.getLocation().toVector().subtract(tnt.getLocation().toVector()).normalize();
+                knockback.multiply(1.0); // Enhanced knockback for blocking players
+                knockback.setY(Math.max(knockback.getY(), 0.2)); // Ensure good upward knockback
+                player.setVelocity(player.getVelocity().add(knockback));
+            }, 1L);
+            
+            // Send special message to blocking player
+            String message = plugin.getConfig().getString("messages.shield-blocking-damage", 
                 "&cYour shield was useless! You took &4300% damage &cfor trying to block the trapped TNT!");
+            player.sendMessage(ChatColor.translateAlternateColorCodes('&', message));
             
             if (plugin.getConfig().getBoolean("general.debug", false)) {
-                plugin.getLogger().info("Player " + player.getName() + " was blocking with shield - applying " + 
-                    (damageMultiplier * 100) + "% damage (" + finalDamage + " instead of " + damage + ")");
+                plugin.getLogger().info("Player " + player.getName() + " was blocking with shield (original: " + originalDamage + 
+                    ", calculated unshielded: " + unshieldedDamage + ") - applying " + 
+                    (damageMultiplier * 100) + "% damage (" + newDamage + ")");
             }
-        } else if (hasShield) {
-            // Player has shield but isn't blocking - normal bypass damage
-            damageMessage = plugin.getConfig().getString("messages.shield-bypass-damage", 
-                "&cYour shield couldn't protect you from the trapped TNT explosion!");
+            
+        } else if (originalDamage > 0) {
+            // Handle non-blocking cases (original logic for when damage > 0)
+            double damageThreshold = plugin.getConfig().getDouble("trapped-tnt.shield-blocking-damage-threshold", 1.0);
+            if (originalDamage < damageThreshold) {
+                return;
+            }
+            
+            if (hasShield && plugin.getConfig().getBoolean("trapped-tnt.bypass-shields", true)) {
+                // Player has shield but isn't blocking - send bypass message
+                String message = plugin.getConfig().getString("messages.shield-bypass-damage", 
+                    "&cYour shield couldn't protect you from the trapped TNT explosion!");
+                player.sendMessage(ChatColor.translateAlternateColorCodes('&', message));
+            }
+        }
+    }
+    
+    /**
+     * Calculate what explosion damage would be without shield blocking
+     */
+    private double calculateUnshieldedExplosionDamage(Player player, TNTPrimed tnt) {
+        Location playerLoc = player.getLocation();
+        Location explosionLoc = tnt.getLocation();
+        
+        // Calculate distance from explosion center
+        double distance = playerLoc.distance(explosionLoc);
+        
+        // Get explosion power from config or use default TNT power
+        float explosionPower = (float) plugin.getConfig().getDouble("trapped-tnt.explosion-power", 4.0);
+        
+        // Calculate damage using vanilla-like formula
+        // This mimics Minecraft's explosion damage calculation
+        double maxDistance = explosionPower * 3.5;
+        
+        if (distance >= maxDistance) {
+            return 0.0; // Too far away for any damage
         }
         
-        // Temporarily remove shields to bypass protection
-        if (hadShieldInMainHand) {
-            player.getInventory().setItemInMainHand(new ItemStack(Material.AIR));
-        }
-        if (hadShieldInOffHand) {
-            player.getInventory().setItemInOffHand(new ItemStack(Material.AIR));
-        }
+        // Base damage calculation (similar to vanilla)
+        double baseDamage = explosionPower * 7.0; // TNT base damage
+        double damageReduction = distance / (explosionPower * 2.0);
+        double rawDamage = baseDamage * (1.0 - damageReduction);
         
-        // Create custom damage event (use player.damage instead of complex event creation)
-        // This approach is simpler and more reliable across different Spigot versions
+        // Apply environmental damage reduction (blocks, etc.)
+        // Simplified version - in reality Minecraft does raytracing for block protection
+        double environmentProtection = Math.min(0.8, distance / maxDistance); // More protection at distance
+        double finalDamage = rawDamage * (1.0 - environmentProtection * 0.3);
         
-        // Apply the damage directly
-        player.damage(finalDamage);
-        
-        // Add knockback effect (increase knockback for blocking players)
-        Vector knockback = player.getLocation().toVector().subtract(tnt.getLocation().toVector()).normalize();
-        double knockbackMultiplier = (isBlocking && hasShield) ? 1.0 : 0.5; // More knockback for blocking players
-        knockback.multiply(knockbackMultiplier);
-        knockback.setY(Math.max(knockback.getY(), 0.1)); // Ensure some upward knockback
-        player.setVelocity(player.getVelocity().add(knockback));
-        
-        // Send feedback message
-        player.sendMessage(ChatColor.translateAlternateColorCodes('&', damageMessage));
-        
-        // Restore shields after a brief delay to prevent interference
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (hadShieldInMainHand) {
-                player.getInventory().setItemInMainHand(mainHand);
-            }
-            if (hadShieldInOffHand) {
-                player.getInventory().setItemInOffHand(offHand);
-            }
-        }, 1L); // 1 tick delay
+        // Ensure damage is positive and reasonable
+        return Math.max(0, Math.min(finalDamage, baseDamage));
     }
     
     /**
