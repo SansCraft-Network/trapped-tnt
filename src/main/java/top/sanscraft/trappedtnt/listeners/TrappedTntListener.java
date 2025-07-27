@@ -227,15 +227,37 @@ public class TrappedTntListener implements Listener {
             double damageMultiplier = plugin.getConfig().getDouble("trapped-tnt.shield-blocking-damage-multiplier", 3.0);
             double newDamage = unshieldedDamage * damageMultiplier;
             
-            // Set the new damage amount (overriding the 0 damage from perfect shield block)
-            event.setDamage(newDamage);
+            // Cancel the original event to prevent shield blocking
+            event.setCancelled(true);
             
-            // Add enhanced knockback for blocking players
+            // Temporarily remove shields to bypass protection
+            ItemStack originalMainHand = mainHand.clone();
+            ItemStack originalOffHand = offHand.clone();
+            
+            if (mainHand.getType() == Material.SHIELD) {
+                player.getInventory().setItemInMainHand(new ItemStack(Material.AIR));
+            }
+            if (offHand.getType() == Material.SHIELD) {
+                player.getInventory().setItemInOffHand(new ItemStack(Material.AIR));
+            }
+            
+            // Apply the damage directly, bypassing shields
+            player.damage(newDamage);
+            
+            // Add enhanced knockback for blocking players and restore shields
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 Vector knockback = player.getLocation().toVector().subtract(tnt.getLocation().toVector()).normalize();
                 knockback.multiply(1.0); // Enhanced knockback for blocking players
                 knockback.setY(Math.max(knockback.getY(), 0.2)); // Ensure good upward knockback
                 player.setVelocity(player.getVelocity().add(knockback));
+                
+                // Restore shields after applying damage and knockback
+                if (originalMainHand.getType() == Material.SHIELD) {
+                    player.getInventory().setItemInMainHand(originalMainHand);
+                }
+                if (originalOffHand.getType() == Material.SHIELD) {
+                    player.getInventory().setItemInOffHand(originalOffHand);
+                }
             }, 1L);
             
             // Send special message to blocking player
