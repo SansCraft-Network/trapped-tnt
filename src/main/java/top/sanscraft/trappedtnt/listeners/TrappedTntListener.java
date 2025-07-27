@@ -227,7 +227,7 @@ public class TrappedTntListener implements Listener {
     }
     
     /**
-     * Apply damage to a player that ignores shield protection
+     * Apply damage to a player that ignores shield protection and deals extra damage to blocking players
      */
     private void applyShieldIgnoringDamage(Player player, double damage, TNTPrimed tnt) {
         // Store original shield state
@@ -235,6 +235,32 @@ public class TrappedTntListener implements Listener {
         ItemStack offHand = player.getInventory().getItemInOffHand();
         boolean hadShieldInMainHand = mainHand.getType() == Material.SHIELD;
         boolean hadShieldInOffHand = offHand.getType() == Material.SHIELD;
+        
+        // Check if player is actively blocking with a shield
+        boolean isBlocking = player.isBlocking();
+        boolean hasShield = hadShieldInMainHand || hadShieldInOffHand;
+        
+        // Calculate final damage based on shield blocking status
+        double finalDamage = damage;
+        String damageMessage = plugin.getConfig().getString("messages.explosion-damage", 
+            "&cYou took explosion damage that bypassed your shield!");
+        
+        if (isBlocking && hasShield) {
+            // Apply configurable damage multiplier if player is actively blocking
+            double damageMultiplier = plugin.getConfig().getDouble("trapped-tnt.shield-blocking-damage-multiplier", 3.0);
+            finalDamage = damage * damageMultiplier;
+            damageMessage = plugin.getConfig().getString("messages.shield-blocking-damage", 
+                "&cYour shield was useless! You took &4300% damage &cfor trying to block the trapped TNT!");
+            
+            if (plugin.getConfig().getBoolean("general.debug", false)) {
+                plugin.getLogger().info("Player " + player.getName() + " was blocking with shield - applying " + 
+                    (damageMultiplier * 100) + "% damage (" + finalDamage + " instead of " + damage + ")");
+            }
+        } else if (hasShield) {
+            // Player has shield but isn't blocking - normal bypass damage
+            damageMessage = plugin.getConfig().getString("messages.shield-bypass-damage", 
+                "&cYour shield couldn't protect you from the trapped TNT explosion!");
+        }
         
         // Temporarily remove shields to bypass protection
         if (hadShieldInMainHand) {
@@ -248,18 +274,17 @@ public class TrappedTntListener implements Listener {
         // This approach is simpler and more reliable across different Spigot versions
         
         // Apply the damage directly
-        player.damage(damage);
+        player.damage(finalDamage);
         
-        // Add knockback effect
+        // Add knockback effect (increase knockback for blocking players)
         Vector knockback = player.getLocation().toVector().subtract(tnt.getLocation().toVector()).normalize();
-        knockback.multiply(0.5); // Adjust knockback strength
+        double knockbackMultiplier = (isBlocking && hasShield) ? 1.0 : 0.5; // More knockback for blocking players
+        knockback.multiply(knockbackMultiplier);
         knockback.setY(Math.max(knockback.getY(), 0.1)); // Ensure some upward knockback
         player.setVelocity(player.getVelocity().add(knockback));
         
         // Send feedback message
-        String message = plugin.getConfig().getString("messages.explosion-damage", 
-            "&cYou took explosion damage that bypassed your shield!");
-        player.sendMessage(ChatColor.translateAlternateColorCodes('&', message));
+        player.sendMessage(ChatColor.translateAlternateColorCodes('&', damageMessage));
         
         // Restore shields after a brief delay to prevent interference
         Bukkit.getScheduler().runTaskLater(plugin, () -> {

@@ -34,6 +34,10 @@ trapped-tnt:
   
   # Whether trapped TNT should ignore shield protection
   bypass-shields: true
+  
+  # Damage multiplier when player is actively blocking with a shield 
+  # (3.0 = 300% damage, 2.0 = 200% damage, etc.)
+  shield-blocking-damage-multiplier: 3.0
 
 # WorldGuard Integration (soft dependency)
 worldguard:
@@ -59,3 +63,5 @@ messages:
   region-not-allowed: "&cYou cannot place trapped TNT in this area!"
   worldguard-not-found: "&eWorldGuard not detected. Trapped TNT works globally."
   explosion-damage: "&cYou took explosion damage that bypassed your shield!"
+  shield-blocking-damage: "&cYour shield was useless! You took &4300% damage &cfor trying to block the trapped TNT!"
+  shield-bypass-damage: "&cYour shield couldn't protect you from the trapped TNT explosion!"
